@@ -2,6 +2,7 @@ type OperationPath string
 
 const (
 {{range .}}
+    // {{.Path}}
     {{.OperationId}}OperationPath OperationPath = "{{.Path}}"
 {{end}}
 )
