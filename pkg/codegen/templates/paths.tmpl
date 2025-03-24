@@ -1,0 +1,7 @@
+type OperationPath string
+
+const (
+{{range .}}
+    {{.OperationId}}OperationPath OperationPath = "{{.Path}}"
+{{end}}
+)
