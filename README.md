@@ -1731,6 +1731,71 @@ func TestClient_canCall() {
 }
 ```
 
+### With Server URLs
+
+An OpenAPI specification makes it possible to denote Servers that a client can interact with, such as:
+
+```yaml
+servers:
+- url: https://development.gigantic-server.com/v1
+  description: Development server
+- url: https://{username}.gigantic-server.com:{port}/{basePath}
+  description: The production API server
+  variables:
+    username:
+      # note! no enum here means it is an open value
+      default: demo
+      description: this value is assigned by the service provider, in this example `gigantic-server.com`
+    port:
+      enum:
+        - '8443'
+        - '443'
+      default: '8443'
+    basePath:
+      # open meaning there is the opportunity to use special base paths as assigned by the provider, default is `v2`
+      default: v2
+```
+
+It is possible to opt-in to the generation of these Server URLs with the following configuration:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
+package: serverurls
+output: gen.go
+generate:
+  # NOTE that this uses default settings - if you want to use initialisms to generate i.e. `ServerURLDevelopmentServer`, you should look up the `output-options.name-normalizer` configuration
+  server-urls: true
+```
+
+This will then generate the following boilerplate:
+
+```go
+// (the below does not include comments that are generated)
+
+const ServerUrlDevelopmentServer = "https://development.gigantic-server.com/v1"
+
+type ServerUrlTheProductionAPIServerBasePathVariable string
+const ServerUrlTheProductionAPIServerBasePathVariableDefault = "v2"
+
+type ServerUrlTheProductionAPIServerPortVariable string
+const ServerUrlTheProductionAPIServerPortVariable8443 ServerUrlTheProductionAPIServerPortVariable = "8443"
+const ServerUrlTheProductionAPIServerPortVariable443 ServerUrlTheProductionAPIServerPortVariable = "443"
+const ServerUrlTheProductionAPIServerPortVariableDefault ServerUrlTheProductionAPIServerPortVariable = ServerUrlTheProductionAPIServerPortVariable8443
+
+type ServerUrlTheProductionAPIServerUsernameVariable string
+const ServerUrlTheProductionAPIServerUsernameVariableDefault = "demo"
+
+func ServerUrlTheProductionAPIServer(basePath ServerUrlTheProductionAPIServerBasePathVariable, port ServerUrlTheProductionAPIServerPortVariable, username ServerUrlTheProductionAPIServerUsernameVariable) (string, error) {
+    // ...
+}
+```
+
+Notice that for URLs that are not templated, a simple `const` definition is created.
+
+However, for more complex URLs that defined `variables` in them, we generate the types (and any `enum` values or `default` values), and instead use a function to create the URL.
+
+For a complete example see [`examples/generate/serverurls`](examples/generate/serverurls).
+
 ## Generating API models
 
 If you're looking to only generate the models for interacting with a remote service, for instance if you need to hand-roll the API client for whatever reason, you can do this as-is.
@@ -2037,7 +2102,7 @@ If you don't want to do this, an alternate option is to [use a single package, w
 
 Check out [the import-mapping/multiplepackages example](examples/import-mapping/multiplepackages/) for the full code.
 
-## Modifying the input OpenAPI Specification
+## Modifying the input OpenAPI Specification (with OpenAPI Overlay)
 
 Prior to `oapi-codegen` v2.4.0, users wishing to override specific configuration, for instance taking advantage of extensions such as `x-go-type`  would need to modify the OpenAPI specification they are using.
 
@@ -2286,6 +2351,11 @@ Do not add a pointer type for optional fields in structs
 </td>
 <td>
 <details>
+
+> [!TIP]
+> If you prefer this behaviour, and prefer to not have to annotate your whole OpenAPI spec for this behaviour, you can use `output-options.prefer-skip-optional-pointer=true` to default this behaviour for all fields.
+>
+> It is then possible to override this on a per-type/per-field basis where necessary.
 
 By default, `oapi-codegen` will generate a pointer for optional fields.
 
@@ -2769,20 +2839,29 @@ const (
 	EXP ClientType = "EXP"
 )
 
+// Defines values for ClientTypeWithNamesExtension.
+const (
+	ClientTypeWithNamesExtensionActive  ClientTypeWithNamesExtension = "ACT"
+	ClientTypeWithNamesExtensionExpired ClientTypeWithNamesExtension = "EXP"
+)
+
+// Defines values for ClientTypeWithVarNamesExtension.
+const (
+	ClientTypeWithVarNamesExtensionActive  ClientTypeWithVarNamesExtension = "ACT"
+	ClientTypeWithVarNamesExtensionExpired ClientTypeWithVarNamesExtension = "EXP"
+)
+
 // ClientType defines model for ClientType.
 type ClientType string
 
-// Defines values for ClientTypeWithExtension.
-const (
-	Active  ClientTypeWithExtension = "ACT"
-	Expired ClientTypeWithExtension = "EXP"
-)
+// ClientTypeWithNamesExtension defines model for ClientTypeWithNamesExtension.
+type ClientTypeWithNamesExtension string
 
-// ClientTypeWithExtension defines model for ClientTypeWithExtension.
-type ClientTypeWithExtension string
+// ClientTypeWithVarNamesExtension defines model for ClientTypeWithVarNamesExtension.
+type ClientTypeWithVarNamesExtension string
 ```
 
-You can see this in more detail in [the example code](examples/extensions/xenumvarnames/).
+You can see this in more detail in [the example code](examples/extensions/xenumnames/).
 
 </details>
 </td>
@@ -3096,6 +3175,20 @@ Middleware library
 <td>
 
 [1.22+ `net/http`](https://pkg.go.dev/net/http)
+
+</td>
+<td>
+
+[nethttp-middleware](https://github.com/oapi-codegen/nethttp-middleware)
+
+</td>
+
+</tr>
+
+<tr>
+<td>
+
+Any other server (which conforms to `net/http`)
 
 </td>
 <td>
@@ -3837,6 +3930,14 @@ Got one to add? Please raise a PR!
 
 ## Frequently Asked Questions (FAQs)
 
+### Does `oapi-codegen` support OpenAPI 3.1?
+
+No, we don't currently.
+
+OpenAPI 3.1 support is [awaiting upstream support](https://github.com/oapi-codegen/oapi-codegen/issues/373).
+
+In the meantime, you could follow [steps from this blog post](https://www.jvt.me/posts/2025/05/04/oapi-codegen-trick-openapi-3-1/) to [use OpenAPI Overlay](#modifying-the-input-openapi-specification-with-openapi-overlay) to "downgrade" the OpenAPI 3.1 spec to OpenAPI 3.0.
+
 ### How does `oapi-codegen` handle `anyOf`, `allOf` and `oneOf`?
 
 `oapi-codegen` supports `anyOf`, `allOf` and `oneOf` for generated code.
@@ -4189,7 +4290,7 @@ In addition, we are also generously sponsored by the following folks, each of wh
 </p>
 
 <p align="center">
-	<a href="https://speakeasy.com?utm_source=oapi-codegen+repo&utm_medium=github+sponsorship">
+	<a href="https://sandbox.speakeasy.com/?s=iQ5hEdrjLCii&utm_source=oapi-codegen+repo&utm_medium=github+sponsorship">
 		<picture>
 		  <source media="(prefers-color-scheme: light)" srcset=".github/sponsors/speakeasy-light.svg">
 		  <source media="(prefers-color-scheme: dark)" srcset=".github/sponsors/speakeasy-dark.svg">
